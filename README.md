@@ -35,45 +35,64 @@ Swagger UI: http://localhost:8080/swagger/index.html
 
 ## Run it locally (against your own Postgres)
 
-```powershell
-cd qmart
-$env:QMART_DSN = "postgres://qmart:qmart@localhost:5432/qmart?sslmode=disable"
+```bash
+export QMART_DSN="postgres://qmart:qmart@localhost:5432/qmart?sslmode=disable"
 go run ./cmd/seed      # load demo catalog + inventory
 go run ./cmd/api       # serve on :8080
 ```
 
+> PowerShell: `$env:QMART_DSN = "postgres://qmart:qmart@localhost:5432/qmart?sslmode=disable"`
+
 ## Exercise the API
 
-```powershell
+The examples below use `curl` (available on macOS, Linux, WSL, and Windows).
+`sed` is used only to pull the token out of the JSON response.
+
+```bash
 # health
-Invoke-RestMethod http://localhost:8080/healthz
+curl -s http://localhost:8080/healthz
 
 # get a customer token
-$tok = Invoke-RestMethod http://localhost:8080/api/v1/auth/token `
-  -Method Post -ContentType application/json -Body '{"email":"buyer@example.com","name":"Buyer"}'
-$h = @{ Authorization = "Bearer $($tok.data.token)" }
+TOKEN=$(curl -s -X POST http://localhost:8080/api/v1/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"email":"buyer@example.com","name":"Buyer"}' \
+  | sed -E 's/.*"token":"([^"]+)".*/\1/')
 
 # get an admin token (email listed in QMART_ADMIN_EMAILS)
-$admin = Invoke-RestMethod http://localhost:8080/api/v1/auth/token `
-  -Method Post -ContentType application/json -Body '{"email":"admin@example.com","name":"Admin"}'
-$ah = @{ Authorization = "Bearer $($admin.data.token)" }
+ADMIN=$(curl -s -X POST http://localhost:8080/api/v1/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","name":"Admin"}' \
+  | sed -E 's/.*"token":"([^"]+)".*/\1/')
 
 # browse catalog (public)
-Invoke-RestMethod "http://localhost:8080/api/v1/products?category=dairy"
+curl -s "http://localhost:8080/api/v1/products?category=dairy"
 
 # add to cart -> checkout -> pay (customer)
-Invoke-RestMethod http://localhost:8080/api/v1/cart/items -Method Post -Headers $h `
-  -ContentType application/json -Body '{"product_id":1,"quantity":2}'
-Invoke-RestMethod http://localhost:8080/api/v1/orders -Method Post -Headers $h `
-  -ContentType application/json -Body '{"store_id":"store-bali-01","delivery_fee_cents":500}'
-Invoke-RestMethod http://localhost:8080/api/v1/orders/1/payments -Method Post -Headers $h
-Invoke-RestMethod http://localhost:8080/api/v1/payments/webhook -Method Post `
-  -ContentType application/json -Body '{"order_id":1,"status":"paid"}'
+curl -s -X POST http://localhost:8080/api/v1/cart/items \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"product_id":1,"quantity":2}'
+
+curl -s -X POST http://localhost:8080/api/v1/orders \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"store_id":"store-bali-01","delivery_fee_cents":500}'
+
+curl -s -X POST http://localhost:8080/api/v1/orders/1/payments \
+  -H "Authorization: Bearer $TOKEN"
+
+curl -s -X POST http://localhost:8080/api/v1/payments/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"order_id":1,"status":"paid"}'
 
 # admin-only: advance order status
-Invoke-RestMethod http://localhost:8080/api/v1/orders/1/status -Method Post -Headers $ah `
-  -ContentType application/json -Body '{"status":"confirmed"}'
+curl -s -X POST http://localhost:8080/api/v1/orders/1/status \
+  -H "Authorization: Bearer $ADMIN" -H "Content-Type: application/json" \
+  -d '{"status":"confirmed"}'
 ```
+
+> Windows PowerShell equivalent: swap `curl -s ...` for
+> `Invoke-RestMethod -Uri ... -Method Post -Headers $h -ContentType application/json -Body '...'`.
+> Easiest of all: use the interactive Swagger UI at
+> http://localhost:8080/swagger/index.html
 
 ## Authentication & roles
 
