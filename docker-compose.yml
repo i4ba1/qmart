@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: qmart
+      POSTGRES_PASSWORD: qmart
+      POSTGRES_DB: qmart
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qmart -d qmart"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  seed:
+    build: .
+    command: ["/usr/local/bin/qmart-seed"]
+    environment:
+      QMART_DSN: postgres://qmart:qmart@db:5432/qmart?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: .
+    environment:
+      QMART_DSN: postgres://qmart:qmart@db:5432/qmart?sslmode=disable
+      QMART_ADDR: ":8080"
+      QMART_TOKEN_SECRET: change-me-in-production
+      QMART_ADMIN_EMAILS: admin@example.com
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
